@@ -8,8 +8,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
-import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // ════════════════════════════════════════════════════════════════════
@@ -17,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 // ════════════════════════════════════════════════════════════════════
 const _imageExts = {'jpg', 'jpeg', 'png', 'webp'};
 const _videoExts = {'mp4', 'mkv', 'webm', 'mov', 'avi', 'm4v'};
-const _heicExts = {'heic', 'heif'}; // 👈 HEIC సపోర్ట్ యాడ్ చేసాం
+const _heicExts = {'heic', 'heif'}; 
 
 final themeNotifier = ValueNotifier<ThemeMode>(ThemeMode.dark);
 
@@ -32,7 +30,6 @@ String _hash(String s) {
   return h.toRadixString(16);
 }
 
-/// Lightweight record: type 0=image, 1=video, 2=heic
 class GItem {
   final String path;
   final int ms;
@@ -123,7 +120,7 @@ class HeicCache {
     final out = File('${cacheDir()}/heic/${_hash(it.path)}_${it.ms}.jpg');
     if (out.existsSync()) return Future.value(out);
     final j = _Job(it, out, cancelled);
-    _queue.addLast(j); // LIFO logic
+    _queue.addLast(j); 
     _pump();
     return j.done.future;
   }
@@ -140,12 +137,7 @@ class HeicCache {
   static Future<File?> _make(_Job j) async {
     try {
       Directory(j.out.parent.path).createSync(recursive: true);
-      // 👈 ffmpeg బదులు పక్కా HEIC కన్వర్టర్ 'heif-convert' వాడుతున్నాం
-      final p = await Process.start('heif-convert', [
-        '-q', '80', // 80% క్వాలిటీ (స్పీడ్ అండ్ క్లారిటీ పర్ఫెక్ట్ గా ఉంటుంది)
-        j.item.path,
-        j.out.path,
-      ]);
+      final p = await Process.start('heif-convert', ['-q', '80', j.item.path, j.out.path]);
       await p.exitCode.timeout(const Duration(seconds: 15), onTimeout: () { p.kill(); return -1; });
       if (j.out.existsSync() && j.out.lengthSync() > 0) return j.out;
     } catch (_) {}
@@ -201,8 +193,7 @@ class VideoThumbs {
 //  MAIN + THEME
 // ════════════════════════════════════════════════════════════════════
 Future<void> main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+  WidgetsFlutterBinding.ensureInitialized();  
   PaintingBinding.instance.imageCache
     ..maximumSize = 300
     ..maximumSizeBytes = 128 << 20;
@@ -506,7 +497,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       controller: _scroll,
                       child: CustomScrollView(
                         controller: _scroll,
-                        cacheExtent: 200, // 👈 RAM Fix
+                        cacheExtent: 200, 
                         slivers: [
                           for (final s in _secs) ...[
                             SliverToBoxAdapter(
@@ -524,7 +515,13 @@ class _GalleryScreenState extends State<GalleryScreen> {
                                     final idx = s.start + i;
                                     final it = _flat[idx];
                                     return it.isVideo
-                                        ? VideoTile(key: ValueKey(it.path), item: it, fast: _fast, onTap: () => _open(idx))
+                                        ? VideoTile(
+                                            key: ValueKey(it.path), 
+                                            item: it, 
+                                            fast: _fast, 
+                                            // 👈 mpv app direct ga play chestundi
+                                            onTap: () => Process.start('mpv', [it.path])
+                                          )
                                         : (it.isHeic
                                             ? HeicTile(key: ValueKey(it.path), item: it, fast: _fast, onTap: () => _open(idx))
                                             : ImageTile(key: ValueKey(it.path), item: it, fast: _fast, onTap: () => _open(idx)));
@@ -567,7 +564,7 @@ class _ImageTileState extends State<ImageTile> {
     final w = (200 * MediaQuery.devicePixelRatioOf(context)).round();
     return GestureDetector(
       onTap: widget.onTap,
-      child: RepaintBoundary( // 👈 CPU Fix
+      child: RepaintBoundary( 
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: _show
@@ -579,7 +576,6 @@ class _ImageTileState extends State<ImageTile> {
   }
 }
 
-// ─── కొత్త HEIC Tile ───
 class HeicTile extends StatefulWidget {
   final GItem item;
   final ValueNotifier<bool> fast;
@@ -622,62 +618,69 @@ class VideoTile extends StatefulWidget {
   @override
   State<VideoTile> createState() => _VideoTileState();
 }
+
 class _VideoTileState extends State<VideoTile> {
   File? _thumb;
-  bool _requested = false, _hover = false, _disposed = false;
-  Timer? _hoverTimer;
-  @override void initState() { super.initState(); widget.fast.addListener(_load); _load(); }
+  bool _requested = false, _disposed = false;
+
+  @override 
+  void initState() { 
+    super.initState(); 
+    widget.fast.addListener(_load); 
+    _load(); 
+  }
+  
   void _load() {
     if (_requested || widget.fast.value) return;
     _requested = true;
-    VideoThumbs.get(widget.item, () => _disposed).then((f) { if (mounted && f != null) setState(() => _thumb = f); });
+    VideoThumbs.get(widget.item, () => _disposed).then((f) { 
+      if (mounted && f != null) setState(() => _thumb = f); 
+    });
   }
-  @override void dispose() { _disposed = true; _hoverTimer?.cancel(); widget.fast.removeListener(_load); super.dispose(); }
-  @override Widget build(BuildContext context) {
+  
+  @override 
+  void dispose() { 
+    _disposed = true; 
+    widget.fast.removeListener(_load); 
+    super.dispose(); 
+  }
+  
+  @override 
+  Widget build(BuildContext context) {
     final w = (200 * MediaQuery.devicePixelRatioOf(context)).round();
-    return MouseRegion(
-      onEnter: (_) {
-        _hoverTimer?.cancel();
-        _hoverTimer = Timer(const Duration(milliseconds: 300), () { if (mounted && !widget.fast.value) setState(() => _hover = true); });
-      },
-      onExit: (_) {
-        _hoverTimer?.cancel();
-        if (_hover) setState(() => _hover = false);
-      },
-      child: GestureDetector(
-        onTap: widget.onTap,
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: RepaintBoundary(
         child: ClipRRect(
           borderRadius: BorderRadius.circular(8),
           child: Stack(fit: StackFit.expand, children: [
-            _thumb != null ? Image.file(_thumb!, cacheWidth: w, fit: BoxFit.cover, gaplessPlayback: true) : ColoredBox(color: _placeholder(context), child: const Center(child: Icon(Icons.movie_outlined, size: 28))),
-            if (_hover) _PreviewPlayer(path: widget.item.path),
-            if (!_hover) const Positioned(right: 6, bottom: 6, child: Icon(Icons.play_circle_fill_rounded, color: Colors.white, size: 24, shadows: [Shadow(color: Colors.black54, blurRadius: 6)])),
+            _thumb != null 
+              ? Image.file(_thumb!, cacheWidth: w, fit: BoxFit.cover, gaplessPlayback: true) 
+              : ColoredBox(color: _placeholder(context), child: const Center(child: Icon(Icons.movie_outlined, size: 28))),
+            // 👈 Animated thumbnail theesesi, simple 'VIDEO' tag pettam CPU save avvadaniki
+            Positioned(
+              right: 6, bottom: 6, 
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black87,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.play_arrow_rounded, color: Colors.white, size: 16),
+                    SizedBox(width: 4),
+                    Text('VIDEO', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                  ],
+                ),
+              ),
+            ),
           ]),
         ),
       ),
     );
   }
-}
-
-class _PreviewPlayer extends StatefulWidget {
-  final String path;
-  const _PreviewPlayer({required this.path});
-  @override State<_PreviewPlayer> createState() => _PreviewPlayerState();
-}
-class _PreviewPlayerState extends State<_PreviewPlayer> {
-  late final Player _player = Player(configuration: const PlayerConfiguration(bufferSize: 4 * 1024 * 1024));
-  late final VideoController _controller = VideoController(_player);
-  StreamSubscription<Duration>? _sub;
-  bool _seeking = false;
-  @override void initState() {
-    super.initState();
-    _player.setVolume(0); _player.setPlaylistMode(PlaylistMode.single); _player.open(Media(widget.path));
-    _sub = _player.stream.position.listen((p) {
-      if (p.inSeconds >= 5 && !_seeking) { _seeking = true; _player.seek(Duration.zero); } else if (p.inSeconds < 4) { _seeking = false; }
-    });
-  }
-  @override void dispose() { _sub?.cancel(); _player.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) => Video(controller: _controller, fit: BoxFit.cover, controls: NoVideoControls, fill: Colors.black);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -740,7 +743,7 @@ class _FullscreenViewerState extends State<FullscreenViewer> {
     final bgColor = Theme.of(context).scaffoldBackgroundColor;
     final fgColor = isDark ? Colors.white : Colors.black87;
     final gradientStart = isDark ? Colors.black87 : Colors.white.withOpacity(0.9);
-    final gradientEnd = isDark ? Colors.black.withOpacity(0.0) : Colors.white.withOpacity(0.0); // 👈 Theme Shadow Fix
+    final gradientEnd = isDark ? Colors.black.withOpacity(0.0) : Colors.white.withOpacity(0.0); 
     final arrowBg = isDark ? Colors.black54 : Colors.white70;
 
     return Scaffold(
@@ -764,10 +767,27 @@ class _FullscreenViewerState extends State<FullscreenViewer> {
               itemCount: widget.items.length,
               itemBuilder: (context, index) {
                 final it = widget.items[index];
-                if (it.isVideo) return _VideoPage(key: ValueKey(it.path), path: it.path, active: index == _current);
-                if (it.isHeic) return _HeicPage(key: ValueKey(it.path), item: it); // 👈 HEIC Fullscreen 
                 
-                return RepaintBoundary( // 👈 CPU Fix
+                // 👈 Fullscreen lo video vasthe simple ga play button untundi
+                if (it.isVideo) {
+                  return GestureDetector(
+                    onTap: () => Process.start('mpv', [it.path]),
+                    child: const Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.play_circle_fill_rounded, size: 100, color: Colors.white38),
+                          SizedBox(height: 16),
+                          Text("Tap to play in MPV", style: TextStyle(color: Colors.white54, fontSize: 16)),
+                        ]
+                      )
+                    ),
+                  );
+                }
+                
+                if (it.isHeic) return _HeicPage(key: ValueKey(it.path), item: it); 
+                
+                return RepaintBoundary( 
                   child: InteractiveViewer(
                     minScale: 1.0, maxScale: 4.0,
                     child: Center(child: Image.file(File(it.path), cacheWidth: 1920, fit: BoxFit.contain, gaplessPlayback: true, filterQuality: FilterQuality.none)),
@@ -823,27 +843,5 @@ class _HeicPageState extends State<_HeicPage> {
         ),
       ),
     );
-  }
-}
-
-class _VideoPage extends StatefulWidget {
-  final String path;
-  final bool active;
-  const _VideoPage({super.key, required this.path, required this.active});
-  @override State<_VideoPage> createState() => _VideoPageState();
-}
-class _VideoPageState extends State<_VideoPage> {
-  Player? _player; VideoController? _controller;
-  @override void initState() { super.initState(); if (widget.active) _start(); }
-  @override void didUpdateWidget(covariant _VideoPage old) {
-    super.didUpdateWidget(old);
-    if (widget.active && !old.active) { setState(_start); } else if (!widget.active && old.active) { setState(_stop); }
-  }
-  void _start() { _player = Player(); _controller = VideoController(_player!); _player!.open(Media(widget.path)); }
-  void _stop() { _player?.dispose(); _player = null; _controller = null; }
-  @override void dispose() { _player?.dispose(); super.dispose(); }
-  @override Widget build(BuildContext context) {
-    if (_controller == null) return const ColoredBox(color: Colors.black);
-    return Video(controller: _controller!);
   }
 }
